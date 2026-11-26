@@ -1,0 +1,1792 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SantéZig — Plateforme IA de Triage & Gestion des Flux (Ziguinchor)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            medical: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a',
+              950: '#042f2e'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white !important; color: black !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen flex flex-col transition-colors">
+
+  <!-- Notifications Toast -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm pointer-events-none no-print"></div>
+
+  <!-- En-tête principal -->
+  <header class="bg-gradient-to-r from-medical-900 via-medical-800 to-teal-800 text-white shadow-lg no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur-xs flex items-center justify-center border border-white/20 shrink-0">
+          <svg class="w-6 h-6 text-teal-200" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-extrabold tracking-tight">SantéZig</h1>
+            <span class="px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider rounded-full bg-teal-400/20 text-teal-100 border border-teal-300/30">IA Santé</span>
+            <span id="headerUrgentBadge" class="hidden px-2.5 py-0.5 text-[11px] font-extrabold rounded-full bg-red-600 text-white animate-pulse">
+              <span id="headerUrgentCount">0</span> Urgence(s)
+            </span>
+          </div>
+          <p data-i18n="appTagline" class="text-xs text-teal-100/90">Triage IA &amp; Gestion des Flux • Ziguinchor</p>
+        </div>
+      </div>
+
+      <!-- Contrôles globaux : Langue, Réseau, Thème -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <select id="languageSelector" onchange="changeLanguage(this.value)" aria-label="Langue"
+          class="bg-white/15 hover:bg-white/20 text-white text-xs font-semibold rounded-xl px-3 py-2 border border-white/25 focus:outline-none cursor-pointer">
+          <option value="fr" class="text-slate-900">🇫🇷 Français</option>
+          <option value="wo" class="text-slate-900">🇸🇳 Wolof</option>
+          <option value="dyo" class="text-slate-900">🇸🇳 Diola (Joola)</option>
+          <option value="ff" class="text-slate-900">🇸🇳 Poular (Pulaar)</option>
+          <option value="en" class="text-slate-900">🇬🇧 English</option>
+        </select>
+
+        <button type="button" onclick="toggleNetworkMode()"
+          class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/15 hover:bg-white/20 border border-white/25 text-xs font-semibold transition cursor-pointer">
+          <span id="networkDot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span id="networkStatusLabel" data-i18n="onlineLabel">En ligne</span>
+        </button>
+
+        <button id="syncNowBtn" type="button" onclick="syncOfflineRecords()"
+          class="hidden px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition cursor-pointer">
+          Synchroniser
+        </button>
+
+        <button type="button" onclick="toggleDarkMode()"
+          class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/15 hover:bg-white/20 border border-white/25 text-xs font-semibold transition cursor-pointer">
+          <span id="themeIcon">🌙</span>
+          <span id="themeLabel">Sombre</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Barre d'onglets -->
+    <div class="bg-black/15 border-t border-white/10">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-wrap items-center gap-2">
+        <button id="tabPatient" type="button" onclick="switchTab('patient')" data-i18n="tabPatient"
+          class="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white dark:bg-slate-800 text-medical-800 dark:text-teal-200 shadow-xs transition cursor-pointer">
+          Espace Patient (Pré-enregistrement)
+        </button>
+        <button id="tabMedical" type="button" onclick="switchTab('medical')" data-i18n="tabMedical"
+          class="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-100 hover:text-white transition cursor-pointer">
+          Espace Médical &amp; Accueil
+        </button>
+        <button id="tabStats" type="button" onclick="switchTab('stats')" data-i18n="tabStats"
+          class="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-100 hover:text-white transition cursor-pointer">
+          Statistiques &amp; Rapports
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenu principal -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- ========================================================= -->
+    <!-- VUE 1 : ESPACE PATIENT (PRÉ-ENREGISTREMENT & TRIAGE IA)   -->
+    <!-- ========================================================= -->
+    <section id="viewPatient" class="space-y-6">
+      <!-- Bannière héro -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div class="space-y-1.5 max-w-3xl">
+          <span data-i18n="heroBadge" class="inline-block px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-xs font-bold border border-teal-200 dark:border-teal-800">
+            Innovations Technologiques en IA • Région de Ziguinchor
+          </span>
+          <h2 data-i18n="heroTitle" class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
+            Réduisons l'attente dans nos centres de santé grâce au pré-triage intelligent.
+          </h2>
+          <p data-i18n="heroSubtitle" class="text-sm text-slate-600 dark:text-slate-400">
+            Remplissez votre fiche avant votre déplacement ou à l'accueil. Le moteur IA estime le niveau de priorité afin de prendre en charge immédiatement les urgences.
+          </p>
+        </div>
+
+        <div class="flex flex-col items-start lg:items-end gap-2 shrink-0">
+          <button id="agentModeBtn" type="button" onclick="toggleAgentMode()"
+            class="px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-semibold border border-slate-700 transition cursor-pointer">
+            Activer Borne
+          </button>
+          <span class="text-[11px] text-slate-500 dark:text-slate-400">Mode saisie rapide agent d'accueil</span>
+        </div>
+      </div>
+
+      <div id="agentModeBanner" class="hidden bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-2xl px-4 py-3 text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-center justify-between">
+        <span>🖥️ Mode Borne Agent d'Accueil activé : enregistrement assisté pour les patients sans smartphone.</span>
+        <button type="button" onclick="toggleAgentMode()" class="underline cursor-pointer">Quitter</button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Formulaire Patient -->
+        <form id="patientForm" onsubmit="handlePatientSubmit(event)"
+          class="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
+
+          <div class="border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h3 data-i18n="formSec1" class="text-base font-bold text-slate-900 dark:text-white">1. Identification du patient</h3>
+            <p data-i18n="formSec1Sub" class="text-xs text-slate-500 dark:text-slate-400">Ces informations facilitent votre orientation dès l'arrivée au centre.</p>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label for="patientNom" class="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <span data-i18n="lblName">Nom complet</span> <span class="text-red-600">*</span>
+                </label>
+                <button type="button" onclick="dictateField('patientNom')" data-i18n="dictateNameBtn"
+                  class="text-[11px] font-semibold text-teal-700 dark:text-teal-300 hover:underline cursor-pointer">
+                  🎙️ Dicter le nom
+                </button>
+              </div>
+              <input id="patientNom" type="text" required placeholder="Ex. : Aminata Sané"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-600 focus:border-medical-600">
+            </div>
+
+            <div>
+              <label for="patientAge" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <span data-i18n="lblAge">Âge (années)</span> <span class="text-red-600">*</span>
+              </label>
+              <input id="patientAge" type="number" required min="0" max="120" value="28"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-600 focus:border-medical-600">
+            </div>
+
+            <div>
+              <label for="patientCni" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <span data-i18n="lblCni">N° Carte Nationale d'Identité (CNI)</span> <span class="text-red-600">*</span>
+              </label>
+              <input id="patientCni" type="text" required placeholder="Ex. : 1 784 1996 00412"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-medical-600 focus:border-medical-600">
+            </div>
+
+            <div>
+              <label for="patientTel" data-i18n="lblPhone" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Téléphone (SMS / Rappel)
+              </label>
+              <input id="patientTel" type="tel" placeholder="Ex. : 77 123 45 67"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-600 focus:border-medical-600">
+            </div>
+
+            <div class="sm:col-span-2">
+              <label for="patientCentre" data-i18n="lblCenter" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Centre de santé de Ziguinchor
+              </label>
+              <select id="patientCentre"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-600 focus:border-medical-600">
+                <option value="Centre de Santé de Ziguinchor (Silence)">Centre de Santé de Ziguinchor (Silence)</option>
+                <option value="Hôpital Régional de Ziguinchor">Hôpital Régional de Ziguinchor</option>
+                <option value="Poste de Santé de Tilène">Poste de Santé de Tilène</option>
+                <option value="Poste de Santé de Kandé">Poste de Santé de Kandé</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Assistant Vocal Patient (Dictée vocale pour patient ne pouvant pas écrire) -->
+          <div class="bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/60 dark:to-emerald-950/40 border border-teal-200 dark:border-teal-800 rounded-2xl p-4 space-y-2.5">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+              <div>
+                <h4 data-i18n="voiceAssistTitle" class="text-sm font-bold text-teal-950 dark:text-teal-200 flex items-center gap-1.5">
+                  <span>🎙️</span> <span>Assistant Vocal Patient (Si vous ne pouvez pas écrire)</span>
+                </h4>
+                <p data-i18n="voiceAssistDesc" class="text-xs text-teal-800/90 dark:text-teal-300/80 mt-0.5">
+                  Appuyez sur le micro et décrivez à voix haute ce que vous ressentez : le système remplit le motif, coche vos symptômes et garde votre message vocal pour le médecin.
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <button id="voiceDictationBtn" type="button" onclick="toggleVoiceDictation()"
+                  class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-sm transition cursor-pointer">
+                  <span id="voiceMicDot" class="w-2.5 h-2.5 rounded-full bg-white"></span>
+                  <span id="voiceDictationBtnText" data-i18n="voiceStartBtn">Parler maintenant</span>
+                </button>
+                <button id="audioMemoBtn" type="button" onclick="toggleAudioMemoRecording()"
+                  class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-teal-100/70 text-teal-900 dark:text-teal-200 border border-teal-300 dark:border-teal-700 text-xs font-semibold shadow-xs transition cursor-pointer">
+                  <span id="audioMemoBtnText" data-i18n="audioMemoStart">⏺ Note vocale médecin</span>
+                </button>
+              </div>
+            </div>
+            <div id="voiceLiveStatus" class="hidden text-xs font-medium text-teal-900 dark:text-teal-100 bg-white/80 dark:bg-slate-900/70 px-3 py-2 rounded-xl border border-teal-200/80 dark:border-teal-800"></div>
+            <div id="audioMemoPreviewBox" class="hidden flex items-center justify-between gap-2 bg-white/90 dark:bg-slate-900/80 px-3 py-2 rounded-xl border border-teal-200 dark:border-teal-800">
+              <span class="text-xs font-semibold text-teal-800 dark:text-teal-200">🎧 Note vocale enregistrée</span>
+              <audio id="audioMemoPlayer" controls class="h-8 max-w-[210px]"></audio>
+              <button type="button" onclick="clearAudioMemo()" class="text-xs text-red-600 hover:underline cursor-pointer">Supprimer</button>
+            </div>
+          </div>
+
+          <div class="border-b border-slate-100 dark:border-slate-800 pb-3 pt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h3 data-i18n="formSec2" class="text-base font-bold text-slate-900 dark:text-white">2. Questionnaire de symptômes &amp; constantes</h3>
+              <p data-i18n="formSec2Sub" class="text-xs text-slate-500 dark:text-slate-400">Cochez les éléments correspondants ou dictez votre état.</p>
+            </div>
+            <button type="button" onclick="speakQuestionnaire()"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-medical-50 dark:bg-medical-950 hover:bg-medical-100 text-medical-800 dark:text-teal-200 border border-medical-200 dark:border-teal-800 text-xs font-semibold transition cursor-pointer self-start sm:self-auto">
+              <svg class="w-4 h-4 text-medical-700 dark:text-teal-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              </svg>
+              <span data-i18n="listenFormBtn">Écouter le questionnaire</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/70 cursor-pointer text-sm">
+              <input id="symFievre" type="checkbox" class="w-4 h-4 accent-teal-700 rounded">
+              <span data-i18n="symFever">Fièvre élevée (&gt; 38.5°C)</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer text-sm">
+              <input id="symThorax" type="checkbox" class="w-4 h-4 accent-red-600 rounded">
+              <span data-i18n="symChest">Douleur thoracique</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer text-sm">
+              <input id="symRespi" type="checkbox" class="w-4 h-4 accent-red-600 rounded">
+              <span data-i18n="symBreath">Difficulté respiratoire</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer text-sm">
+              <input id="symSaignement" type="checkbox" class="w-4 h-4 accent-red-600 rounded">
+              <span data-i18n="symBleed">Saignement important</span>
+            </label>
+            <label class="sm:col-span-2 flex items-center gap-3 p-3 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer text-sm">
+              <input id="symChronique" type="checkbox" class="w-4 h-4 accent-indigo-600 rounded">
+              <span data-i18n="symChronic">Suivi maladie chronique (Diabète, HTA...)</span>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label for="symDuree" data-i18n="lblDuration" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Durée des symptômes (jours)
+              </label>
+              <input id="symDuree" type="number" min="1" max="60" value="2"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label for="symTemp" data-i18n="lblTemp" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Température (°C - opt.)
+              </label>
+              <input id="symTemp" type="number" step="0.1" min="34" max="43" placeholder="Ex. : 37.8"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label for="symPouls" data-i18n="lblPulse" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Pouls (bpm - opt.)
+              </label>
+              <input id="symPouls" type="number" min="30" max="220" placeholder="Ex. : 82"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm">
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label for="symDetails" data-i18n="lblDetails" class="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Précisions / Motif de consultation (Écrit ou Vocal)
+              </label>
+              <button type="button" onclick="toggleVoiceDictation()" data-i18n="dictateInlineBtn"
+                class="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline cursor-pointer">
+                🎙️ Dicter le motif
+              </button>
+            </div>
+            <textarea id="symDetails" rows="2" data-i18n-placeholder="phDetails" placeholder="Ex. : Céphalées, contrôle tensionnel, renouvellement ordonnance (ou utilisez le micro ci-dessus)..."
+              class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-medical-600 focus:border-medical-600"></textarea>
+          </div>
+
+          <!-- Consentement éclairé -->
+          <label class="flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+            <input id="patientConsent" type="checkbox" required class="mt-0.5 w-4 h-4 accent-teal-700 rounded">
+            <span data-i18n="consentText">J'accepte le traitement sécurisé et confidentiel de mes données de santé pour mon orientation médicale.</span>
+          </label>
+
+          <button type="submit" data-i18n="submitBtn"
+            class="w-full py-3.5 px-6 rounded-xl bg-medical-700 hover:bg-medical-800 text-white font-bold text-sm shadow-sm transition cursor-pointer">
+            Envoyer mon pré-enregistrement
+          </button>
+        </form>
+
+        <!-- Colonne droite : Résultat & Explications -->
+        <div class="space-y-6">
+          <div id="triageResultCard" class="hidden"></div>
+
+          <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+            <h3 data-i18n="howItWorksTitle" class="text-base font-bold text-slate-900 dark:text-white">Comment fonctionne SantéZig ?</h3>
+            <div class="space-y-3 text-xs">
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700">
+                <div data-i18n="step1Title" class="font-bold text-slate-900 dark:text-white">1. Pré-enregistrement</div>
+                <p data-i18n="step1Desc" class="text-slate-600 dark:text-slate-400 mt-0.5">Depuis votre téléphone ou avec un agent à l'accueil.</p>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700">
+                <div data-i18n="step2Title" class="font-bold text-slate-900 dark:text-white">2. Score de triage IA</div>
+                <p data-i18n="step2Desc" class="text-slate-600 dark:text-slate-400 mt-0.5">Détection automatique des signes de gravité et antécédents.</p>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700">
+                <div data-i18n="step3Title" class="font-bold text-slate-900 dark:text-white">3. Créneau &amp; Alerte</div>
+                <p data-i18n="step3Desc" class="text-slate-600 dark:text-slate-400 mt-0.5">Orientation directe ou alerte immédiate du personnel médical.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-teal-950 text-teal-100 rounded-2xl p-5 border border-teal-800 space-y-2 text-xs">
+            <h4 data-i18n="vigilanceTitle" class="font-bold text-white text-sm">Points de vigilance (L3 UASZ)</h4>
+            <p data-i18n="vigilance1">• Validation médicale humaine obligatoire</p>
+            <p data-i18n="vigilance2">• Mode hors-ligne adapté à la connectivité locale</p>
+            <p data-i18n="vigilance3">• Protection et consentement des données sensibles</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- VUE 2 : ESPACE MÉDICAL & ACCUEIL                          -->
+    <!-- ========================================================= -->
+    <section id="viewMedical" class="hidden space-y-6">
+      <div id="urgentAlertBanner" class="hidden bg-red-600 text-white rounded-2xl px-5 py-4 shadow-md flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <span class="text-xl">🚨</span>
+          <span id="urgentAlertText" class="text-xs sm:text-sm font-bold"></span>
+        </div>
+      </div>
+
+      <div id="callingBanner" class="hidden bg-indigo-700 text-white rounded-2xl px-5 py-3.5 shadow-sm flex items-center justify-between">
+        <span id="callingBannerText" class="text-xs sm:text-sm font-bold"></span>
+        <button type="button" onclick="document.getElementById('callingBanner').classList.add('hidden')" class="text-xs underline cursor-pointer">Fermer</button>
+      </div>
+
+      <!-- KPIs -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div class="text-xs text-slate-500 dark:text-slate-400 font-semibold">Total dossiers</div>
+          <div id="kpiTotal" class="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">0</div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-red-200 dark:border-red-900/50 shadow-xs">
+          <div class="text-xs text-red-600 font-semibold">Urgences en attente</div>
+          <div id="kpiUrgent" class="text-2xl font-extrabold text-red-600 mt-1">0</div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold">Suivis chroniques</div>
+          <div id="kpiChronique" class="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-1">0</div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div class="text-xs text-emerald-600 font-semibold">Pris en charge</div>
+          <div id="kpiTraites" class="text-2xl font-extrabold text-emerald-600 mt-1">0</div>
+        </div>
+      </div>
+
+      <!-- Filtres et appel salle -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <input id="searchPatientInput" type="text" oninput="renderMedicalDashboard()" placeholder="Rechercher nom, CNI ou #ID..."
+            class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs w-56">
+          <select id="filterCentre" onchange="renderMedicalDashboard()"
+            class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs">
+            <option value="ALL">Tous les centres (Ziguinchor)</option>
+            <option value="Centre de Santé de Ziguinchor (Silence)">Centre de Santé de Ziguinchor (Silence)</option>
+            <option value="Hôpital Régional de Ziguinchor">Hôpital Régional de Ziguinchor</option>
+            <option value="Poste de Santé de Tilène">Poste de Santé de Tilène</option>
+            <option value="Poste de Santé de Kandé">Poste de Santé de Kandé</option>
+          </select>
+          <select id="filterPriority" onchange="renderMedicalDashboard()"
+            class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs">
+            <option value="ALL">Toutes priorités</option>
+            <option value="1">Niveau 1 — URGENT</option>
+            <option value="2">Niveau 2 — PRIORITAIRE</option>
+            <option value="3">Niveau 3 — ROUTINE</option>
+          </select>
+        </div>
+
+        <button type="button" onclick="callNextPriorityPatient()"
+          class="px-4 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold shadow-xs transition cursor-pointer">
+          📢 Appeler prochain patient prioritaire
+        </button>
+      </div>
+
+      <!-- Tableau de file d'attente -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-x-auto">
+        <table class="w-full text-left border-collapse min-w-[760px]">
+          <thead class="bg-slate-50 dark:bg-slate-800/70 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+            <tr>
+              <th class="px-5 py-3">Priorité IA</th>
+              <th class="px-5 py-3">Patient &amp; CNI</th>
+              <th class="px-5 py-3">Structure</th>
+              <th class="px-5 py-3">Symptômes &amp; Motif</th>
+              <th class="px-5 py-3">Statut</th>
+              <th class="px-5 py-3 text-right">Validation Médicale</th>
+            </tr>
+          </thead>
+          <tbody id="medicalQueueBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- VUE 3 : STATISTIQUES & RAPPORTS                           -->
+    <!-- ========================================================= -->
+    <section id="viewStats" class="hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 no-print">
+        <div>
+          <h2 class="text-xl font-extrabold text-slate-900 dark:text-white">Tableau de Bord Régional &amp; Rapport d'Activité</h2>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Pilotage des flux sanitaires — Région de Ziguinchor (UASZ Groupe n° 8)</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="exportCsvReport()"
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition cursor-pointer">
+            ⬇️ Exporter CSV
+          </button>
+          <button type="button" onclick="window.print()"
+            class="px-4 py-2 rounded-xl bg-medical-700 hover:bg-medical-800 text-white text-xs font-semibold transition cursor-pointer">
+            🖨️ Imprimer / PDF Rapport Officiel
+          </button>
+        </div>
+      </div>
+
+      <!-- KPIs Statistiques -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div class="text-xs font-semibold text-slate-500">Patients pré-enregistrés</div>
+          <div id="statKpiTotal" class="text-3xl font-extrabold text-slate-900 dark:text-white mt-1">0</div>
+          <div class="text-xs text-emerald-600 font-medium mt-1">-38% de temps d'attente estimé à l'accueil</div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div class="text-xs font-semibold text-slate-500">Taux de prise en charge</div>
+          <div id="statKpiRate" class="text-3xl font-extrabold text-medical-700 dark:text-teal-400 mt-1">0%</div>
+          <div class="text-xs text-slate-500 mt-1">Validation humaine systématique</div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div class="text-xs font-semibold text-slate-500">Patients chroniques suivis</div>
+          <div id="statKpiChronic" class="text-3xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-1">0</div>
+          <div class="text-xs text-slate-500 mt-1">Rappels automatisés programmés</div>
+        </div>
+      </div>
+
+      <!-- Graphiques -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+          <h3 class="text-sm font-bold">Répartition par niveau d'urgence IA</h3>
+          <div id="urgencyChartContainer" class="space-y-3"></div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+          <h3 class="text-sm font-bold">Affluence par structure sanitaire</h3>
+          <div id="centerChartContainer" class="space-y-3"></div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+          <h3 class="text-sm font-bold">Prévision IA des pics horaires</h3>
+          <div id="hourlyChartContainer" class="flex items-end gap-2 pt-2"></div>
+          <p class="text-[11px] text-amber-700 dark:text-amber-300 font-semibold">⚠️ Pic d'affluence prévu entre 09h30 et 11h30 : renfort infirmier conseillé.</p>
+        </div>
+      </div>
+
+      <!-- Rapport Officiel -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+          <div>
+            <h3 class="text-base font-extrabold">Rapport Officiel de Synthèse — Région Médicale de Ziguinchor</h3>
+            <p class="text-xs text-slate-500">Université Assane Seck de Ziguinchor (UASZ) • L3 Ingénierie Informatique • Groupe n° 8</p>
+          </div>
+          <div class="text-xs font-semibold text-slate-600 dark:text-slate-300 mt-1 sm:mt-0">
+            Édité le <span id="reportDateStamp"></span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              <tr>
+                <th class="px-4 py-2.5">Centre de Santé</th>
+                <th class="px-4 py-2.5 text-center">Total</th>
+                <th class="px-4 py-2.5 text-center">Urgent (N1)</th>
+                <th class="px-4 py-2.5 text-center">Prioritaire (N2)</th>
+                <th class="px-4 py-2.5 text-center">Routine (N3)</th>
+                <th class="px-4 py-2.5 text-center">Chroniques</th>
+              </tr>
+            </thead>
+            <tbody id="reportTableBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
+          </table>
+        </div>
+
+        <div class="pt-2 text-xs text-slate-500 dark:text-slate-400">
+          <strong>Équipe projet (Groupe n° 8 — 2025/2026) :</strong> Thierno Ibrahima Ba • Mouhamed Ngom • Sokhna Diarra Bousso Fall • Arona Ndaw • Mame Faty Diop
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modale Fiche Clinique Détaillée & Consultation Médecin -->
+  <div id="patientDetailModal" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 no-print">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-wider text-medical-700 dark:text-teal-400">Dossier Clinique &amp; Décision Médicale</span>
+          <h3 id="modalPatientTitle" class="text-lg font-extrabold text-slate-900 dark:text-white mt-0.5">—</h3>
+        </div>
+        <button type="button" onclick="closePatientModal()" class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 text-xs font-bold cursor-pointer">✕</button>
+      </div>
+      <div id="modalPatientBody" class="space-y-3 text-xs sm:text-sm text-slate-700 dark:text-slate-300"></div>
+      <div>
+        <label for="modalDoctorNote" class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+          Observation médicale / Conduite à tenir
+        </label>
+        <textarea id="modalDoctorNote" rows="2" placeholder="Saisir le diagnostic confirmé, l'orientation ou la prescription..."
+          class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-medical-600"></textarea>
+      </div>
+      <div class="flex flex-wrap items-center justify-end gap-2 pt-2">
+        <button type="button" onclick="closePatientModal()" class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-semibold cursor-pointer">Fermer</button>
+        <button type="button" onclick="saveDoctorObservation()" class="px-4 py-2 rounded-xl bg-medical-700 hover:bg-medical-800 text-white text-xs font-semibold cursor-pointer">Enregistrer &amp; Valider la prise en charge</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pied de page -->
+  <footer class="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 mt-8 no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <div>
+        <strong class="text-slate-700 dark:text-slate-200">SantéZig</strong> — Prototype académique L3 Ingénierie Informatique (UASZ) • Groupe n° 8 (2025–2026)
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <span data-i18n="footerDisclaimer">Données simulées à des fins de démonstration et de test.</span>
+        <button type="button" onclick="simulateBulkArrivals()" class="font-semibold text-teal-700 dark:text-teal-300 hover:underline cursor-pointer">
+          ⚡ Simuler 5 arrivées
+        </button>
+        <button type="button" onclick="downloadProjectBrief()" class="font-semibold text-indigo-700 dark:text-indigo-300 hover:underline cursor-pointer">
+          📄 Télécharger Cahier des Charges
+        </button>
+        <button type="button" onclick="resetDemoData()" class="underline text-medical-700 dark:text-teal-400 hover:text-medical-900 cursor-pointer">
+          Réinitialiser démo
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const translations = {
+      fr: {
+        appTagline: "Triage IA & Gestion des Flux • Ziguinchor",
+        offlineLabel: "Hors-ligne",
+        onlineLabel: "En ligne",
+        tabPatient: "Espace Patient (Pré-enregistrement)",
+        tabMedical: "Espace Médical & Accueil",
+        tabStats: "Statistiques & Rapports",
+        heroBadge: "Innovations Technologiques en IA • Région de Ziguinchor",
+        heroTitle: "Réduisons l'attente dans nos centres de santé grâce au pré-triage intelligent.",
+        heroSubtitle: "Remplissez votre fiche avant votre déplacement ou à l'accueil. Le moteur IA estime le niveau de priorité afin de prendre en charge immédiatement les urgences.",
+        formSec1: "1. Identification du patient",
+        formSec1Sub: "Ces informations facilitent votre orientation dès l'arrivée au centre.",
+        lblName: "Nom complet",
+        lblAge: "Âge (années)",
+        lblCni: "N° Carte Nationale d'Identité (CNI)",
+        dictateNameBtn: "🎙️ Dicter le nom",
+        audioMemoStart: "⏺ Note vocale médecin",
+        lblPhone: "Téléphone (SMS / Rappel)",
+        lblCenter: "Centre de santé de Ziguinchor",
+        formSec2: "2. Questionnaire de symptômes & constantes",
+        formSec2Sub: "Cochez les éléments correspondants ou dictez votre état.",
+        listenFormBtn: "Écouter le questionnaire",
+        voiceAssistTitle: "Assistant Vocal Patient (Si vous ne pouvez pas écrire)",
+        voiceAssistDesc: "Appuyez sur le micro et décrivez à voix haute ce que vous ressentez : le système remplit le motif, coche vos symptômes et garde votre message vocal pour le médecin.",
+        voiceStartBtn: "Parler maintenant",
+        voiceStopBtn: "Arrêter l'écoute",
+        dictateInlineBtn: "🎙️ Dicter le motif",
+        symFever: "Fièvre élevée (> 38.5°C)",
+        symChest: "Douleur thoracique",
+        symBreath: "Difficulté respiratoire",
+        symBleed: "Saignement important",
+        symChronic: "Suivi maladie chronique (Diabète, HTA...)",
+        lblDuration: "Durée des symptômes (jours)",
+        lblTemp: "Température (°C - opt.)",
+        lblPulse: "Pouls (bpm - opt.)",
+        lblDetails: "Précisions / Motif de consultation (Écrit ou Vocal)",
+        phDetails: "Ex. : Céphalées, contrôle tensionnel, renouvellement ordonnance...",
+        consentText: "J'accepte le traitement sécurisé et confidentiel de mes données de santé pour mon orientation médicale.",
+        submitBtn: "Envoyer mon pré-enregistrement",
+        howItWorksTitle: "Comment fonctionne SantéZig ?",
+        step1Title: "1. Pré-enregistrement",
+        step1Desc: "Depuis votre téléphone ou avec un agent à l'accueil.",
+        step2Title: "2. Score de triage IA",
+        step2Desc: "Détection automatique des signes de gravité et antécédents.",
+        step3Title: "3. Créneau & Alerte",
+        step3Desc: "Orientation directe ou alerte immédiate du personnel médical.",
+        vigilanceTitle: "Points de vigilance (L3 UASZ)",
+        vigilance1: "• Validation médicale humaine obligatoire",
+        vigilance2: "• Mode hors-ligne adapté à la connectivité locale",
+        vigilance3: "• Protection et consentement des données sensibles",
+        footerDisclaimer: "Données simulées à des fins de démonstration et de test.",
+        reclassifyBtn: "Urgence !",
+        validateBtn: "Prendre en charge",
+        handledDone: "Pris en charge ✓",
+        callNextPrefix: "Appel en salle de consultation : dossier"
+      },
+      wo: {
+        appTagline: "Triage IA & Wér-gi-yaram • Ziguinchor",
+        offlineLabel: "Amul Internet",
+        onlineLabel: "Ci Internet",
+        tabPatient: "Kër Patient (Bindu jiitu)",
+        tabMedical: "Kër Doktoor & Dalal",
+        tabStats: "Statistik & Ràppoor",
+        heroBadge: "Xarala yu bees ci IA • Diiwaanu Ziguinchor",
+        heroTitle: "Wàññi xaar gi ci kër doktoor yi ak triage bu xarañ.",
+        heroSubtitle: "Bindul sa bopp bala ngay dem walla ci dalal bi.",
+        formSec1: "1. Xamle sa bopp",
+        formSec1Sub: "Xibaar yii dañuy dimbali sa dalal.",
+        lblName: "Tur ak sant",
+        lblAge: "At yi",
+        lblCni: "Nimero Kart Identite (CNI)",
+        dictateNameBtn: "🎙️ Wax sa tur",
+        audioMemoStart: "⏺ Baat ngir doktoor",
+        lblPhone: "Telefon",
+        lblCenter: "Kër doktoor bu Ziguinchor",
+        formSec2: "2. Laaj yi ci sa wér-gi-yaram",
+        formSec2Sub: "Tànnal li la dal walla nga wax ko.",
+        listenFormBtn: "Déglu laaj yi",
+        voiceAssistTitle: "Ndimbalu Baat (Soo mënul bind)",
+        voiceAssistDesc: "Bësal ci mikro bi nga wax li lay metti : sistem bi dina ko bind te tànn sa feebar.",
+        voiceStartBtn: "Waxal léegi",
+        voiceStopBtn: "Taxawal déglu bi",
+        dictateInlineBtn: "🎙️ Wax li la dal",
+        symFever: "Yaram bu tàng lool (> 38.5°C)",
+        symChest: "Dënn buy metti",
+        symBreath: "Noyyi bu jafe",
+        symBleed: "Deret buy tuuru",
+        symChronic: "Feebar bu yàgg (Diabète, HTA...)",
+        lblDuration: "Ñaata fan la def",
+        lblTemp: "Tàngaay (°C)",
+        lblPulse: "Xol (bpm)",
+        lblDetails: "Leral ci sa feebar (Bind walla Wax)",
+        phDetails: "Misaal : Bopp buy metti, tànsiyoŋ...",
+        consentText: "Nangu naa ñu jëfandikoo samay xibaar ngir faj ma.",
+        submitBtn: "Yónnee sama bindu",
+        howItWorksTitle: "Naka la SantéZig di doxee ?",
+        step1Title: "1. Bindu jiitu",
+        step1Desc: "Ci sa telefon walla ci dalal bi.",
+        step2Title: "2. Nattukaay IA",
+        step2Desc: "Gis feebar yu gaaw yi.",
+        step3Title: "3. Waxtu & Yëgle",
+        step3Desc: "Yëgal doktoor yi ci saa si.",
+        vigilanceTitle: "Li ñu war a moytu",
+        vigilance1: "• Doktoor moo war a dëggal",
+        vigilance2: "• Mën na dox te amul internet",
+        vigilance3: "• Sutura ci xibaar yi",
+        footerDisclaimer: "Xibaar yu ñu defar ngir wone ni mu doxee.",
+        reclassifyBtn: "Gaaw !",
+        validateBtn: "Faj ko",
+        handledDone: "Faj nañu ko ✓",
+        callNextPrefix: "Ñu ngi woowe ci biir"
+      },
+      dyo: {
+        appTagline: "Triage IA & Lopital • Ziguinchor",
+        offlineLabel: "Bumun Internet",
+        onlineLabel: "Internet",
+        tabPatient: "Kati Patient",
+        tabMedical: "Kati Doktoor",
+        tabStats: "Statistik & Ràppoor",
+        heroBadge: "IA • Ziguinchor",
+        heroTitle: "SantéZig — Dalal kati lopital bu Ziguinchor.",
+        heroSubtitle: "Bindul sa bopp bala ngay dem lopital.",
+        formSec1: "1. Kaan kati",
+        formSec1Sub: "Xibaar kati dalal.",
+        lblName: "Kaan",
+        lblAge: "Fuken",
+        lblCni: "Kart Identite (CNI)",
+        dictateNameBtn: "🎙️ Kaan kati",
+        audioMemoStart: "⏺ Ekaan doktoor",
+        lblPhone: "Telefon",
+        lblCenter: "Lopital Ziguinchor",
+        formSec2: "2. Elob kati bugol",
+        formSec2Sub: "Kaan bugol ekaan.",
+        listenFormBtn: "Yam elob",
+        voiceAssistTitle: "Ekaan kati (Bumun bind)",
+        voiceAssistDesc: "Bësal mikro bi nga wax li lay metti.",
+        voiceStartBtn: "Kaan léegi",
+        voiceStopBtn: "Taxawal",
+        dictateInlineBtn: "🎙️ Kaan bugol",
+        symFever: "Kañen (> 38.5°C)",
+        symChest: "Efum",
+        symBreath: "Efoof jafe",
+        symBleed: "Fisim",
+        symChronic: "Bugol bu yàgg",
+        lblDuration: "Fuken",
+        lblTemp: "Kañen (°C)",
+        lblPulse: "Xol (bpm)",
+        lblDetails: "Elob bugol",
+        phDetails: "Kaan bugol...",
+        consentText: "Nangu naa.",
+        submitBtn: "Yónnee",
+        howItWorksTitle: "SantéZig",
+        step1Title: "1. Bindu",
+        step1Desc: "Telefon walla dalal.",
+        step2Title: "2. IA",
+        step2Desc: "Triage bugol.",
+        step3Title: "3. Doktoor",
+        step3Desc: "Yëgal doktoor.",
+        vigilanceTitle: "Vigilance",
+        vigilance1: "• Doktoor moo dëggal",
+        vigilance2: "• Mode hors-ligne",
+        vigilance3: "• Sutura",
+        footerDisclaimer: "Xibaar ngir wone.",
+        reclassifyBtn: "Gaaw !",
+        validateBtn: "Faj",
+        handledDone: "Faj nañu ✓",
+        callNextPrefix: "Woowe"
+      },
+      ff: {
+        appTagline: "Triage IA & Cellal • Ziguinchor",
+        offlineLabel: "Alaa Internet",
+        onlineLabel: "E Internet",
+        tabPatient: "Nokku Ñawɗo",
+        tabMedical: "Nokku Safrooɓe",
+        tabStats: "Limto & Ciimtol",
+        heroBadge: "Karallaagal IA • Diiwaan Ziguinchor",
+        heroTitle: "Ustude cabbitaare e cuuɗi safrirɗi Ziguinchor.",
+        heroSubtitle: "Winndito hade maa yahde suudu safrirdu.",
+        formSec1: "1. Innde e humpito ñawɗo",
+        formSec1Sub: "Kabaruuji ballitooji jaɓɓagol maa.",
+        lblName: "Innde timmunde",
+        lblAge: "Duuɓi",
+        lblCni: "Limre Kartal (CNI)",
+        dictateNameBtn: "🎙️ Haal innde maa",
+        audioMemoStart: "⏺ Daande ngam doktoor",
+        lblPhone: "Telefoŋ",
+        lblCenter: "Suudu safrirdu Ziguinchor",
+        formSec2: "2. Laamnde ñawu & ɓanndu",
+        formSec2Sub: "Suɓo ko muusata maa walla haal.",
+        listenFormBtn: "Heɗo laamnde",
+        voiceAssistTitle: "Ballal Daande (So a waawaa winndude)",
+        voiceAssistDesc: "Ñoƴƴu mikro o haal ko muusata maa.",
+        voiceStartBtn: "Haal jooni",
+        voiceStopBtn: "Dartin",
+        dictateInlineBtn: "🎙️ Haal sabaabu",
+        symFever: "Nguleeki ɓalli (> 38.5°C)",
+        symChest: "Naawoore becce",
+        symBreath: "Caɗeele foofaango",
+        symBleed: "Ƴiiƴam keewɗam",
+        symChronic: "Ñawu duumiingu (Jabet, HTA...)",
+        lblDuration: "Balɗe ñawu",
+        lblTemp: "Nguleeki (°C)",
+        lblPulse: "Ɓernde (bpm)",
+        lblDetails: "Cimtol ñawu (Winndu walla Haal)",
+        phDetails: "Yeru : Muuseeki hoore, tànsiyoŋ...",
+        consentText: "Mi jaɓii kuutoragol kabaruuji am ngam safrude mi.",
+        submitBtn: "Neldu binnditagol am",
+        howItWorksTitle: "Hol no SantéZig gollortoo ?",
+        step1Title: "1. Binnditagol",
+        step1Desc: "E telefoŋ walla e jaɓɓorde.",
+        step2Title: "2. Triage IA",
+        step2Desc: "Anndude ñawuuji jaawɗi.",
+        step3Title: "3. Waktu & Noddaango",
+        step3Desc: "Tintinde safrooɓe ɗoon e ɗoon.",
+        vigilanceTitle: "Reentaare",
+        vigilance1: "• Safroowo ina foti tabitinde",
+        vigilance2: "• Gollorgal tawa alaa internet",
+        vigilance3: "• Suuɗde sirlu ñawɗo",
+        footerDisclaimer: "Kabaruuji kollitooji.",
+        reclassifyBtn: "Jaawɗo !",
+        validateBtn: "Safru",
+        handledDone: "Safraama ✓",
+        callNextPrefix: "E nodda e suudu safrirdu"
+      },
+      en: {
+        appTagline: "AI Triage & Patient Flow • Ziguinchor",
+        offlineLabel: "Offline",
+        onlineLabel: "Online",
+        tabPatient: "Patient Portal (Pre-registration)",
+        tabMedical: "Medical & Reception Desk",
+        tabStats: "Statistics & Reports",
+        heroBadge: "AI Technological Innovations • Ziguinchor Region",
+        heroTitle: "Reducing waiting times in health centers through smart pre-triage.",
+        heroSubtitle: "Complete your record before arriving or at reception. The AI engine estimates priority to immediately treat emergencies.",
+        formSec1: "1. Patient Identification",
+        formSec1Sub: "This information speeds up orientation upon arrival.",
+        lblName: "Full Name",
+        lblAge: "Age (years)",
+        lblCni: "National ID Number (CNI)",
+        dictateNameBtn: "🎙️ Dictate name",
+        audioMemoStart: "⏺ Voice memo for doctor",
+        lblPhone: "Phone (SMS / Reminder)",
+        lblCenter: "Ziguinchor Health Center",
+        formSec2: "2. Symptoms & Vitals Questionnaire",
+        formSec2Sub: "Check matching symptoms or dictate your condition.",
+        listenFormBtn: "Listen to questionnaire",
+        voiceAssistTitle: "Patient Voice Assistant (If unable to write)",
+        voiceAssistDesc: "Press the mic and describe how you feel: the system fills the reason, checks symptoms, and saves your voice memo.",
+        voiceStartBtn: "Speak now",
+        voiceStopBtn: "Stop listening",
+        dictateInlineBtn: "🎙️ Dictate reason",
+        symFever: "High fever (> 38.5°C)",
+        symChest: "Chest pain",
+        symBreath: "Difficulty breathing",
+        symBleed: "Heavy bleeding",
+        symChronic: "Chronic condition follow-up (Diabetes, HTA...)",
+        lblDuration: "Symptom duration (days)",
+        lblTemp: "Temperature (°C - opt.)",
+        lblPulse: "Pulse (bpm - opt.)",
+        lblDetails: "Details / Reason for visit (Text or Voice)",
+        phDetails: "E.g.: Headache, blood pressure check, prescription renewal...",
+        consentText: "I consent to the secure and confidential processing of my health data for medical triage.",
+        submitBtn: "Submit pre-registration",
+        howItWorksTitle: "How does SantéZig work?",
+        step1Title: "1. Pre-registration",
+        step1Desc: "From your phone or with a reception agent.",
+        step2Title: "2. AI Triage Score",
+        step2Desc: "Automatic detection of critical signs and history.",
+        step3Title: "3. Slot & Alert",
+        step3Desc: "Direct guidance or immediate medical alert.",
+        vigilanceTitle: "Key Safeguards (L3 UASZ)",
+        vigilance1: "• Mandatory human medical validation",
+        vigilance2: "• Offline mode adapted to local connectivity",
+        vigilance3: "• Protection and consent for sensitive health data",
+        footerDisclaimer: "Simulated data for demonstration and testing purposes.",
+        reclassifyBtn: "Urgent!",
+        validateBtn: "Admit patient",
+        handledDone: "Admitted ✓",
+        callNextPrefix: "Calling to consultation room: record"
+      }
+    };
+
+    let currentLang = "fr";
+    let isAgentMode = false;
+    let isOnlineSync = true;
+    let lastTriageRecord = null;
+    let lastTriageMeta = null;
+
+    const initialPatients = [
+      {
+        id: 101,
+        nom: "Mamadou Lamine Diémé",
+        age: 62,
+        cni: "1 784 1964 00412",
+        telephone: "77 412 89 10",
+        centre: "Hôpital Régional de Ziguinchor",
+        symptoms: ["Douleur thoracique", "Difficulté respiratoire"],
+        chronic: true,
+        days: 1,
+        details: "Oppression thoracique depuis ce matin",
+        level: 1,
+        label: "URGENT",
+        status: "En attente",
+        validated: false,
+        synced: true,
+        arrivalTime: "08:42"
+      },
+      {
+        id: 102,
+        nom: "Awa Seydi",
+        age: 6,
+        cni: "2 912 2020 01108",
+        telephone: "78 210 44 19",
+        centre: "Centre de Santé de Ziguinchor (Silence)",
+        symptoms: ["Fièvre élevée (> 38.5°C)"],
+        chronic: false,
+        days: 3,
+        details: "Forte fièvre persistante chez l'enfant",
+        level: 2,
+        label: "PRIORITAIRE",
+        status: "En attente",
+        validated: false,
+        synced: true,
+        arrivalTime: "08:55"
+      },
+      {
+        id: 103,
+        nom: "Ibrahima Bâ",
+        age: 34,
+        cni: "1 553 1992 00874",
+        telephone: "76 890 12 33",
+        centre: "Poste de Santé de Tilène",
+        symptoms: [],
+        chronic: false,
+        days: 2,
+        details: "Consultation générale et renouvellement ordonnance",
+        level: 3,
+        label: "ROUTINE",
+        status: "En attente",
+        validated: false,
+        synced: true,
+        arrivalTime: "09:10"
+      }
+    ];
+
+    const STORAGE_KEY = "santezig_patients_v2";
+    let patientsQueue = loadSavedPatients();
+    let currentAudioMemoUrl = null;
+    let mediaRecorderInstance = null;
+    let audioChunks = [];
+    let activeModalPatientId = null;
+
+    function loadSavedPatients() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+      return [...initialPatients];
+    }
+
+    function persistPatients() {
+      try {
+        const serializable = patientsQueue.map(({ audioMemoUrl, ...rest }) => rest);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+      } catch (e) {}
+    }
+
+    function resetDemoData() {
+      localStorage.removeItem(STORAGE_KEY);
+      patientsQueue = [...initialPatients];
+      persistPatients();
+      updateUrgentCounter();
+      renderMedicalDashboard();
+      renderStatsAndReport();
+      showToast("Données de démonstration réinitialisées.", "info");
+    }
+
+    function simulateBulkArrivals() {
+      const samples = [
+        { nom: "Ousmane Sonko", age: 54, cni: "1 642 1972 00319", telephone: "77 510 22 11", centre: "Hôpital Régional de Ziguinchor", symptoms: ["Douleur thoracique"], chronic: true, days: 1, details: "Douleur aiguë à la poitrine", level: 1, label: "URGENT" },
+        { nom: "Mariama Coly", age: 31, cni: "2 811 1995 00912", telephone: "78 334 19 08", centre: "Centre de Santé de Ziguinchor (Silence)", symptoms: ["Fièvre élevée (> 38.5°C)"], chronic: false, days: 3, details: "Fièvre et frissons depuis 3 jours", level: 2, label: "PRIORITAIRE" },
+        { nom: "Cheikh Sadibou Diallo", age: 68, cni: "1 412 1958 00104", telephone: "76 601 45 77", centre: "Poste de Santé de Kandé", symptoms: [], chronic: true, days: 5, details: "Suivi diabète et contrôle glycémique", level: 2, label: "PRIORITAIRE" },
+        { nom: "Fatoumata Binta Camara", age: 24, cni: "2 730 2002 01540", telephone: "77 892 31 04", centre: "Poste de Santé de Tilène", symptoms: [], chronic: false, days: 1, details: "Consultation de routine / certificat", level: 3, label: "ROUTINE" },
+        { nom: "Lamine Badji", age: 40, cni: "1 519 1986 00741", telephone: "70 415 88 90", centre: "Centre de Santé de Ziguinchor (Silence)", symptoms: ["Difficulté respiratoire"], chronic: false, days: 1, details: "Essoufflement soudain", level: 1, label: "URGENT" }
+      ];
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      let nextId = patientsQueue.reduce((max, p) => Math.max(max, p.id), 100) + 1;
+
+      samples.forEach((s) => {
+        patientsQueue.push({
+          ...s,
+          id: nextId++,
+          status: "En attente",
+          validated: false,
+          synced: isOnlineSync,
+          arrivalTime: timeStr
+        });
+      });
+
+      persistPatients();
+      updateUrgentCounter();
+      renderMedicalDashboard();
+      renderStatsAndReport();
+      showToast("5 nouveaux patients simulés et triés par l'IA !", "success");
+    }
+
+    function downloadProjectBrief() {
+      const content = `# CAHIER DES CHARGES & DOSSIER PROJET - SANTÉZIG
+Université Assane Seck de Ziguinchor (UASZ) - L3 Ingénierie Informatique (2025-2026)
+Cours : Innovations Technologiques en IA | Groupe n° 8
+Membres : Thierno Ibrahima Ba, Mouhamed Ngom, Sokhna Diarra Bousso Fall, Arona Ndaw, Mame Faty Diop
+
+## 1. PROBLÉMATIQUE
+Désengorger les centres de santé de la région de Ziguinchor et réduire les délais d'attente grâce au pré-enregistrement intelligent et au triage assisté par IA.
+
+## 2. FONCTIONNALITÉS CLÉS DE LA PLATEFORME
+- Pré-enregistrement patient avec Numéro de Carte Nationale d'Identité (CNI / NIN).
+- Assistant vocal complet (dictée du nom, dictée des symptômes et note vocale audio pour le médecin) destiné aux patients ne sachant pas écrire.
+- Interface multilingue : Français, Wolof, Diola (Joola), Poular (Pulaar) et Anglais.
+- Moteur de triage IA à 3 niveaux (1: URGENT, 2: PRIORITAIRE, 3: ROUTINE) avec règles de sécurité sur les drapeaux rouges.
+- Console médicale avec validation humaine obligatoire, réévaluation en urgence, fiche clinique et appel salle d'attente.
+- Mode hors-ligne avec synchronisation différée adapté à la connectivité locale.
+- Tableau de bord statistique, prévision des pics d'affluence, export CSV et rapport officiel imprimable.
+`;
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Cahier_des_Charges_SanteZig_UASZ_Groupe8.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("Cahier des charges téléchargé !", "success");
+    }
+
+    function dictateField(fieldId) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        showToast("La dictée vocale n'est pas supportée sur ce navigateur.", "warning");
+        return;
+      }
+      const rec = new SpeechRecognition();
+      rec.lang = currentLang === "en" ? "en-US" : "fr-FR";
+      rec.interimResults = false;
+      showToast("Parlez maintenant pour remplir le champ...", "info");
+      rec.onresult = (e) => {
+        const text = e.results[0][0].transcript.trim();
+        document.getElementById(fieldId).value = text;
+        showToast(`Texte dicté : ${text}`, "success");
+      };
+      rec.start();
+    }
+
+    async function toggleAudioMemoRecording() {
+      const btnText = document.getElementById("audioMemoBtnText");
+      if (mediaRecorderInstance && mediaRecorderInstance.state === "recording") {
+        mediaRecorderInstance.stop();
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast("Enregistrement audio non disponible sur ce navigateur.", "warning");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        mediaRecorderInstance = new MediaRecorder(stream);
+        mediaRecorderInstance.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+        mediaRecorderInstance.onstop = () => {
+          const blob = new Blob(audioChunks, { type: "audio/webm" });
+          currentAudioMemoUrl = URL.createObjectURL(blob);
+          const player = document.getElementById("audioMemoPlayer");
+          player.src = currentAudioMemoUrl;
+          document.getElementById("audioMemoPreviewBox").classList.remove("hidden");
+          btnText.textContent = t("audioMemoStart");
+          stream.getTracks().forEach(track => track.stop());
+          showToast("Note vocale enregistrée et jointe au dossier.", "success");
+        };
+        mediaRecorderInstance.start();
+        btnText.textContent = "⏹ Arrêter l'enregistrement";
+        showToast("Enregistrement de la note vocale en cours...", "info");
+      } catch (err) {
+        showToast("Accès au microphone refusé ou indisponible.", "warning");
+      }
+    }
+
+    function clearAudioMemo() {
+      currentAudioMemoUrl = null;
+      document.getElementById("audioMemoPlayer").src = "";
+      document.getElementById("audioMemoPreviewBox").classList.add("hidden");
+    }
+
+    function openPatientModal(id) {
+      const p = patientsQueue.find(item => item.id === id);
+      if (!p) return;
+      activeModalPatientId = id;
+      document.getElementById("modalPatientTitle").textContent = `${p.nom} (#${p.id}) • ${p.age} ans`;
+      document.getElementById("modalPatientBody").innerHTML = `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-50 dark:bg-slate-800/70 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
+          <div><strong>CNI :</strong> <span class="font-mono">${p.cni || "Non renseignée"}</span></div>
+          <div><strong>Téléphone :</strong> ${p.telephone || "—"}</div>
+          <div><strong>Structure :</strong> ${p.centre}</div>
+          <div><strong>Priorité IA :</strong> ${p.label} (Niveau ${p.level})</div>
+          <div class="sm:col-span-2"><strong>Symptômes :</strong> ${(p.symptoms.join(", ") || "Consultation générale")}${p.chronic ? " • Suivi chronique" : ""}</div>
+          <div class="sm:col-span-2"><strong>Motif déclaré :</strong> ${p.details || "Aucun détail complémentaire"}</div>
+        </div>
+        ${p.audioMemoUrl ? `<div class="p-3 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 flex items-center justify-between gap-2">
+          <span class="text-xs font-bold text-teal-900 dark:text-teal-200">🎧 Message vocal du patient :</span>
+          <audio controls src="${p.audioMemoUrl}" class="h-8"></audio>
+        </div>` : ""}
+      `;
+      document.getElementById("modalDoctorNote").value = p.doctorNote || "";
+      document.getElementById("patientDetailModal").classList.remove("hidden");
+    }
+
+    function closePatientModal() {
+      activeModalPatientId = null;
+      document.getElementById("patientDetailModal").classList.add("hidden");
+    }
+
+    function saveDoctorObservation() {
+      if (!activeModalPatientId) return;
+      const target = patientsQueue.find(p => p.id === activeModalPatientId);
+      if (!target) return;
+      target.doctorNote = document.getElementById("modalDoctorNote").value.trim();
+      target.status = "Pris en charge";
+      target.validated = true;
+      persistPatients();
+      closePatientModal();
+      updateUrgentCounter();
+      renderMedicalDashboard();
+      renderStatsAndReport();
+      showToast(`Dossier #${target.id} (${target.nom}) validé et mis à jour.`, "success");
+    }
+
+    function t(key) {
+      return (translations[currentLang] && translations[currentLang][key]) || translations.fr[key] || key;
+    }
+
+    function changeLanguage(lang) {
+      currentLang = translations[lang] ? lang : "fr";
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        if (key) el.textContent = t(key);
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+        const key = el.getAttribute("data-i18n-placeholder");
+        if (key) el.setAttribute("placeholder", t(key));
+      });
+      const netLabel = document.getElementById("networkStatusLabel");
+      if (netLabel) netLabel.textContent = isOnlineSync ? t("onlineLabel") : t("offlineLabel");
+      renderMedicalDashboard();
+      renderStatsAndReport();
+    }
+
+    function switchTab(tab) {
+      const views = {
+        patient: document.getElementById("viewPatient"),
+        medical: document.getElementById("viewMedical"),
+        stats: document.getElementById("viewStats")
+      };
+      const buttons = {
+        patient: document.getElementById("tabPatient"),
+        medical: document.getElementById("tabMedical"),
+        stats: document.getElementById("tabStats")
+      };
+
+      Object.keys(views).forEach(key => {
+        if (!views[key] || !buttons[key]) return;
+        if (key === tab) {
+          views[key].classList.remove("hidden");
+          buttons[key].className = "flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white dark:bg-slate-800 text-medical-800 dark:text-teal-200 shadow-xs transition cursor-pointer";
+        } else {
+          views[key].classList.add("hidden");
+          buttons[key].className = "flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-100 hover:text-white transition cursor-pointer";
+        }
+      });
+
+      if (tab === "medical") renderMedicalDashboard();
+      if (tab === "stats") renderStatsAndReport();
+    }
+
+    function toggleDarkMode() {
+      const html = document.documentElement;
+      const isDark = html.classList.toggle("dark");
+      const label = document.getElementById("themeLabel");
+      const icon = document.getElementById("themeIcon");
+      if (label) label.textContent = isDark ? "Clair" : "Sombre";
+      if (icon) icon.textContent = isDark ? "☀️" : "🌙";
+    }
+
+    function toggleNetworkMode() {
+      isOnlineSync = !isOnlineSync;
+      const dot = document.getElementById("networkDot");
+      const label = document.getElementById("networkStatusLabel");
+      const syncBtn = document.getElementById("syncNowBtn");
+
+      if (isOnlineSync) {
+        if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+        if (label) label.textContent = t("onlineLabel");
+        if (syncBtn) syncBtn.classList.add("hidden");
+        syncOfflineRecords();
+      } else {
+        if (dot) dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+        if (label) label.textContent = t("offlineLabel");
+        if (syncBtn) syncBtn.classList.remove("hidden");
+        showToast("Mode hors-ligne activé : les dossiers sont enregistrés localement.", "warning");
+      }
+    }
+
+    function syncOfflineRecords() {
+      let count = 0;
+      patientsQueue.forEach(p => {
+        if (!p.synced) {
+          p.synced = true;
+          count++;
+        }
+      });
+      persistPatients();
+      renderMedicalDashboard();
+      if (count > 0) showToast(`${count} dossier(s) hors-ligne synchronisé(s) avec succès.`, "success");
+    }
+
+    function toggleAgentMode() {
+      isAgentMode = !isAgentMode;
+      const btn = document.getElementById("agentModeBtn");
+      const banner = document.getElementById("agentModeBanner");
+      const consent = document.getElementById("patientConsent");
+      if (isAgentMode) {
+        if (btn) btn.textContent = "Désactiver Borne";
+        if (banner) banner.classList.remove("hidden");
+        if (consent) consent.checked = true;
+      } else {
+        if (btn) btn.textContent = "Activer Borne";
+        if (banner) banner.classList.add("hidden");
+      }
+    }
+
+    function showToast(message, type = "info") {
+      const container = document.getElementById("toastContainer");
+      if (!container) return;
+      const colors = {
+        info: "bg-slate-900 text-white border-slate-700",
+        success: "bg-emerald-700 text-white border-emerald-500",
+        warning: "bg-amber-600 text-white border-amber-400",
+        urgent: "bg-red-700 text-white border-red-500"
+      };
+      const toast = document.createElement("div");
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-lg border text-xs sm:text-sm font-semibold transition ${colors[type] || colors.info}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.remove();
+      }, 3800);
+    }
+
+    function computeTriageAI(input) {
+      const temp = parseFloat(input.temp);
+      const pulse = parseInt(input.pulse, 10);
+
+      if (
+        input.chest ||
+        input.breath ||
+        input.bleed ||
+        (!isNaN(temp) && temp >= 39.8) ||
+        (!isNaN(pulse) && (pulse >= 130 || pulse <= 45))
+      ) {
+        return {
+          level: 1,
+          label: "URGENT",
+          colorClass: "bg-red-600 text-white",
+          borderClass: "border-red-500 bg-red-50/70 dark:bg-red-950/40",
+          consigne: "Prise en charge immédiate. Présentez-vous directement au poste infirmier d'urgence.",
+          slot: "Immédiat (Priorité Absolue)"
+        };
+      }
+
+      if (
+        input.fever ||
+        input.chronic ||
+        input.age <= 6 ||
+        input.age >= 65 ||
+        input.days >= 4 ||
+        (!isNaN(temp) && temp >= 38.5)
+      ) {
+        return {
+          level: 2,
+          label: "PRIORITAIRE",
+          colorClass: "bg-amber-500 text-white",
+          borderClass: "border-amber-500 bg-amber-50/70 dark:bg-amber-950/40",
+          consigne: "Passage prioritaire recommandé dans les 20 à 35 minutes.",
+          slot: "Créneau prioritaire (+25 min)"
+        };
+      }
+
+      return {
+        level: 3,
+        label: "ROUTINE",
+        colorClass: "bg-emerald-600 text-white",
+        borderClass: "border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40",
+        consigne: "Consultation standard. Créneau programmé pour éviter l'encombrement en salle.",
+        slot: "Créneau programmé (+1h15)"
+      };
+    }
+
+    let recognitionInstance = null;
+    let isDictating = false;
+
+    function toggleVoiceDictation() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        showToast("La reconnaissance vocale n'est pas disponible sur ce navigateur.", "warning");
+        return;
+      }
+      const btnText = document.getElementById("voiceDictationBtnText");
+      const statusBox = document.getElementById("voiceLiveStatus");
+
+      if (isDictating && recognitionInstance) {
+        recognitionInstance.stop();
+        return;
+      }
+
+      recognitionInstance = new SpeechRecognition();
+      recognitionInstance.lang = currentLang === "en" ? "en-US" : "fr-FR";
+      recognitionInstance.continuous = false;
+      recognitionInstance.interimResults = true;
+
+      recognitionInstance.onstart = () => {
+        isDictating = true;
+        if (btnText) btnText.textContent = t("voiceStopBtn");
+        if (statusBox) {
+          statusBox.classList.remove("hidden");
+          statusBox.textContent = "🎙️ Écoute en cours... Décrivez vos symptômes à voix haute.";
+        }
+      };
+
+      recognitionInstance.onresult = (event) => {
+        let transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (statusBox) statusBox.textContent = `🗣️ « ${transcript} »`;
+        if (event.results[event.results.length - 1].isFinal) {
+          const detailsEl = document.getElementById("symDetails");
+          detailsEl.value = (detailsEl.value ? detailsEl.value + " " : "") + transcript.trim();
+          autoCheckSymptomsFromSpeech(transcript.toLowerCase());
+        }
+      };
+
+      recognitionInstance.onend = () => {
+        isDictating = false;
+        if (btnText) btnText.textContent = t("voiceStartBtn");
+      };
+
+      recognitionInstance.start();
+    }
+
+    function autoCheckSymptomsFromSpeech(text) {
+      if (text.includes("fièvre") || text.includes("fievre") || text.includes("chaud") || text.includes("tàng")) {
+        document.getElementById("symFievre").checked = true;
+      }
+      if (text.includes("poitrine") || text.includes("thorax") || text.includes("cœur") || text.includes("coeur")) {
+        document.getElementById("symThorax").checked = true;
+      }
+      if (text.includes("respir") || text.includes("souffle") || text.includes("étouffe") || text.includes("noyyi")) {
+        document.getElementById("symRespi").checked = true;
+      }
+      if (text.includes("sang") || text.includes("saigne") || text.includes("hémorragie")) {
+        document.getElementById("symSaignement").checked = true;
+      }
+      if (text.includes("diabète") || text.includes("tension") || text.includes("chronique") || text.includes("asthme")) {
+        document.getElementById("symChronique").checked = true;
+      }
+    }
+
+    function speakQuestionnaire() {
+      if (!("speechSynthesis" in window)) {
+        showToast("Synthèse vocale non supportée sur ce navigateur.", "warning");
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(
+        "Bienvenue sur SantéZig. Veuillez indiquer votre nom, votre numéro de carte nationale d'identité, et cocher ou dicter vos symptômes : fièvre élevée, douleur thoracique, difficulté respiratoire, saignement ou suivi de maladie chronique."
+      );
+      utterance.lang = currentLang === "en" ? "en-US" : "fr-FR";
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function speakLastTriageResult() {
+      if (!lastTriageRecord || !lastTriageMeta || !("speechSynthesis" in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(
+        `Dossier numéro ${lastTriageRecord.id} pour ${lastTriageRecord.nom}. Niveau estimé : ${lastTriageMeta.label}. ${lastTriageMeta.consigne}`
+      );
+      utterance.lang = currentLang === "en" ? "en-US" : "fr-FR";
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function handlePatientSubmit(event) {
+      event.preventDefault();
+
+      const nom = document.getElementById("patientNom").value.trim();
+      const age = parseInt(document.getElementById("patientAge").value, 10) || 28;
+      const cni = document.getElementById("patientCni").value.trim();
+      const telephone = document.getElementById("patientTel").value.trim();
+      const centre = document.getElementById("patientCentre").value;
+      const fever = document.getElementById("symFievre").checked;
+      const chest = document.getElementById("symThorax").checked;
+      const breath = document.getElementById("symRespi").checked;
+      const bleed = document.getElementById("symSaignement").checked;
+      const chronic = document.getElementById("symChronique").checked;
+      const days = parseInt(document.getElementById("symDuree").value, 10) || 1;
+      const temp = document.getElementById("symTemp").value;
+      const pulse = document.getElementById("symPouls").value;
+      const details = document.getElementById("symDetails").value.trim();
+
+      const symptoms = [];
+      if (fever) symptoms.push("Fièvre élevée (> 38.5°C)");
+      if (chest) symptoms.push("Douleur thoracique");
+      if (breath) symptoms.push("Difficulté respiratoire");
+      if (bleed) symptoms.push("Saignement important");
+
+      const triage = computeTriageAI({ age, fever, chest, breath, bleed, chronic, days, temp, pulse });
+      const now = new Date();
+      const arrivalTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const nextId = patientsQueue.reduce((max, p) => Math.max(max, p.id), 100) + 1;
+
+      const newRecord = {
+        id: nextId,
+        nom,
+        age,
+        cni,
+        telephone,
+        centre,
+        symptoms,
+        chronic,
+        days,
+        details,
+        audioMemoUrl: currentAudioMemoUrl,
+        level: triage.level,
+        label: triage.label,
+        status: "En attente",
+        validated: false,
+        synced: isOnlineSync,
+        arrivalTime
+      };
+
+      patientsQueue.push(newRecord);
+      persistPatients();
+      lastTriageRecord = newRecord;
+      lastTriageMeta = triage;
+
+      renderTriageResultCard(newRecord, triage);
+      updateUrgentCounter();
+      renderMedicalDashboard();
+      renderStatsAndReport();
+
+      if (triage.level === 1) {
+        showToast(`ALERTE URGENCE : ${nom} orienté en priorité absolue !`, "urgent");
+      } else {
+        showToast(`Pré-enregistrement #${newRecord.id} confirmé (${triage.label}).`, "success");
+      }
+
+      document.getElementById("patientForm").reset();
+      clearAudioMemo();
+      document.getElementById("patientAge").value = "28";
+      document.getElementById("symDuree").value = "2";
+      if (isAgentMode) {
+        document.getElementById("patientConsent").checked = true;
+      }
+    }
+
+    function renderTriageResultCard(record, triage) {
+      const card = document.getElementById("triageResultCard");
+      if (!card) return;
+      card.className = `rounded-2xl border-2 p-6 shadow-sm space-y-4 ${triage.borderClass}`;
+      card.innerHTML = `
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Ticket d'orientation • Dossier #${record.id}</span>
+            <h3 class="text-lg font-extrabold text-slate-900 dark:text-white mt-0.5">${record.nom} (${record.age} ans)</h3>
+            <p class="text-xs text-slate-600 dark:text-slate-300 font-mono">CNI : ${record.cni || "Non renseignée"} • ${record.centre}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold tracking-wide ${triage.colorClass}">${triage.label}</span>
+            <button type="button" onclick="speakLastTriageResult()" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold cursor-pointer">🔊 Écouter</button>
+          </div>
+        </div>
+        <div class="bg-white/90 dark:bg-slate-900/80 rounded-xl p-4 border border-slate-200 dark:border-slate-700 text-sm space-y-1.5">
+          <p><strong>Consigne d'orientation :</strong> ${triage.consigne}</p>
+          <p><strong>Créneau estimé :</strong> ${triage.slot}</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400 pt-1"><em>Note : Ce pré-triage IA sera validé par le personnel soignant dès votre arrivée.</em></p>
+        </div>
+      `;
+      card.classList.remove("hidden");
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function updateUrgentCounter() {
+      const activeUrgent = patientsQueue.filter(p => p.status === "En attente" && p.level === 1).length;
+      const badge = document.getElementById("headerUrgentBadge");
+      const countEl = document.getElementById("headerUrgentCount");
+      if (countEl) countEl.textContent = activeUrgent;
+      if (badge) {
+        if (activeUrgent > 0) badge.classList.remove("hidden");
+        else badge.classList.add("hidden");
+      }
+    }
+
+    function callNextPriorityPatient() {
+      const waiting = patientsQueue
+        .filter(p => p.status === "En attente")
+        .sort((a, b) => a.level - b.level || a.id - b.id);
+      if (waiting.length === 0) {
+        showToast("Aucun patient en attente dans la file.", "info");
+        return;
+      }
+      const next = waiting[0];
+      const banner = document.getElementById("callingBanner");
+      const textEl = document.getElementById("callingBannerText");
+      if (textEl) textEl.textContent = `${t("callNextPrefix")} #${next.id} — ${next.nom} (${next.label})`;
+      if (banner) banner.classList.remove("hidden");
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance(`Patient ${next.nom}, dossier numéro ${next.id}, veuillez vous présenter en salle de consultation.`);
+        utt.lang = "fr-FR";
+        window.speechSynthesis.speak(utt);
+      }
+    }
+
+    function renderMedicalDashboard() {
+      const tbody = document.getElementById("medicalQueueBody");
+      if (!tbody) return;
+
+      const centerFilter = document.getElementById("filterCentre")?.value || "ALL";
+      const priorityFilter = document.getElementById("filterPriority")?.value || "ALL";
+      const searchQuery = (document.getElementById("searchPatientInput")?.value || "").trim().toLowerCase();
+
+      const total = patientsQueue.length;
+      const urgentCount = patientsQueue.filter(p => p.level === 1 && p.status === "En attente").length;
+      const chronicCount = patientsQueue.filter(p => p.chronic).length;
+      const handledCount = patientsQueue.filter(p => p.status === "Pris en charge").length;
+
+      if (document.getElementById("kpiTotal")) document.getElementById("kpiTotal").textContent = total;
+      if (document.getElementById("kpiUrgent")) document.getElementById("kpiUrgent").textContent = urgentCount;
+      if (document.getElementById("kpiChronique")) document.getElementById("kpiChronique").textContent = chronicCount;
+      if (document.getElementById("kpiTraites")) document.getElementById("kpiTraites").textContent = handledCount;
+
+      const alertBanner = document.getElementById("urgentAlertBanner");
+      const alertText = document.getElementById("urgentAlertText");
+      if (urgentCount > 0) {
+        const urgentNames = patientsQueue.filter(p => p.level === 1 && p.status === "En attente").map(p => p.nom).join(", ");
+        if (alertText) alertText.textContent = `${urgentCount} cas critique(s) en attente de prise en charge immédiate : ${urgentNames}.`;
+        if (alertBanner) alertBanner.classList.remove("hidden");
+      } else if (alertBanner) {
+        alertBanner.classList.add("hidden");
+      }
+
+      const filtered = patientsQueue
+        .filter(p => centerFilter === "ALL" || p.centre === centerFilter)
+        .filter(p => priorityFilter === "ALL" || String(p.level) === priorityFilter)
+        .filter(p =>
+          !searchQuery ||
+          p.nom.toLowerCase().includes(searchQuery) ||
+          String(p.id).includes(searchQuery) ||
+          (p.cni && p.cni.toLowerCase().includes(searchQuery))
+        )
+        .sort((a, b) => {
+          if (a.status !== b.status) return a.status === "En attente" ? -1 : 1;
+          return a.level - b.level || a.id - b.id;
+        });
+
+      const badgeMap = {
+        1: "bg-red-600 text-white",
+        2: "bg-amber-500 text-white",
+        3: "bg-emerald-600 text-white"
+      };
+
+      tbody.innerHTML = filtered.map(p => {
+        const actionHtml = p.status === "En attente"
+          ? `<div class="inline-flex items-center justify-end gap-1.5">
+               <button type="button" onclick="openPatientModal(${p.id})"
+                 class="px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-200 text-xs font-semibold transition cursor-pointer">
+                 Dossier${p.audioMemoUrl ? " 🎧" : ""}
+               </button>
+               ${p.level > 1 ? `<button type="button" onclick="escalatePatientToUrgent(${p.id})"
+                 class="px-2.5 py-1.5 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 text-red-700 dark:text-red-300 text-xs font-semibold transition cursor-pointer">
+                 ${t("reclassifyBtn")}
+               </button>` : ""}
+               <button type="button" onclick="validatePatient(${p.id})"
+                 class="px-3.5 py-1.5 rounded-xl bg-medical-700 hover:bg-medical-800 text-white text-xs font-semibold transition cursor-pointer">
+                 ${t("validateBtn")}
+               </button>
+             </div>`
+          : `<div class="inline-flex items-center justify-end gap-2">
+               <button type="button" onclick="openPatientModal(${p.id})" class="text-xs underline text-medical-700 dark:text-teal-300 cursor-pointer">Voir fiche</button>
+               <span class="text-xs text-slate-400 font-medium">${t("handledDone")}</span>
+             </div>`;
+
+        return `
+          <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
+            <td class="px-5 py-3.5">
+              <span class="px-2.5 py-1 rounded-lg text-xs font-bold ${badgeMap[p.level]}">${p.label}</span>
+              <div class="text-[11px] text-slate-400 mt-1">#${p.id} • ${p.arrivalTime}</div>
+            </td>
+            <td class="px-5 py-3.5">
+              <div class="font-bold text-slate-900 dark:text-white">${p.nom} <span class="font-normal text-slate-500">(${p.age} ans)</span></div>
+              <div class="text-xs font-mono text-slate-500 dark:text-slate-400">CNI : ${p.cni || "Non renseignée"}</div>
+            </td>
+            <td class="px-5 py-3.5 text-xs text-slate-700 dark:text-slate-300">${p.centre}</td>
+            <td class="px-5 py-3.5 text-xs">
+              <div class="text-slate-800 dark:text-slate-200 font-medium">${p.symptoms.join(", ") || "Consultation générale"}${p.chronic ? " • <span class='text-indigo-600 dark:text-indigo-400 font-semibold'>Chronique</span>" : ""}</div>
+              <div class="text-slate-500 dark:text-slate-400">${p.details || ""}</div>
+            </td>
+            <td class="px-5 py-3.5 text-xs">
+              <span class="px-2.5 py-1 rounded-full font-semibold ${p.status === "En attente" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"}">
+                ${p.status}
+              </span>
+            </td>
+            <td class="px-5 py-3.5 text-right">${actionHtml}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function validatePatient(id) {
+      const target = patientsQueue.find(p => p.id === id);
+      if (!target) return;
+      target.status = "Pris en charge";
+      target.validated = true;
+      persistPatients();
+
+      updateUrgentCounter();
+      renderMedicalDashboard();
+      renderStatsAndReport();
+      showToast(`Prise en charge validée pour ${target.nom}.`, "success");
+    }
+
+    function escalatePatientToUrgent(id) {
+      const target = patientsQueue.find(p => p.id === id);
+      if (!target) return;
+      target.level = 1;
+      target.label = "URGENT";
+      persistPatients();
+
+      updateUrgentCounter();
+      renderMedicalDashboard();
+      renderStatsAndReport();
+      showToast(`Validation médicale : ${target.nom} a été reclassé en URGENT (Niveau 1).`, "urgent");
+    }
+
+    function renderStatsAndReport() {
+      const total = patientsQueue.length;
+      const u1 = patientsQueue.filter(p => p.level === 1).length;
+      const u2 = patientsQueue.filter(p => p.level === 2).length;
+      const u3 = patientsQueue.filter(p => p.level === 3).length;
+      const handled = patientsQueue.filter(p => p.status === "Pris en charge").length;
+      const chronic = patientsQueue.filter(p => p.chronic).length;
+
+      if (document.getElementById("statKpiTotal")) document.getElementById("statKpiTotal").textContent = total;
+      if (document.getElementById("statKpiRate")) document.getElementById("statKpiRate").textContent = total ? `${Math.round((handled / total) * 100)}%` : "0%";
+      if (document.getElementById("statKpiChronic")) document.getElementById("statKpiChronic").textContent = chronic;
+
+      const urgencyChart = document.getElementById("urgencyChartContainer");
+      if (urgencyChart) {
+        const items = [
+          { label: "Niveau 1 — URGENT", count: u1, color: "bg-red-600" },
+          { label: "Niveau 2 — PRIORITAIRE", count: u2, color: "bg-amber-500" },
+          { label: "Niveau 3 — ROUTINE", count: u3, color: "bg-emerald-600" }
+        ];
+        urgencyChart.innerHTML = items.map(item => {
+          const pct = total ? Math.round((item.count / total) * 100) : 0;
+          return `
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs font-semibold">
+                <span>${item.label}</span>
+                <span>${item.count} (${pct}%)</span>
+              </div>
+              <div class="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full ${item.color} rounded-full" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      const centers = [
+        "Centre de Santé de Ziguinchor (Silence)",
+        "Hôpital Régional de Ziguinchor",
+        "Poste de Santé de Tilène",
+        "Poste de Santé de Kandé"
+      ];
+
+      const centerChart = document.getElementById("centerChartContainer");
+      const reportTable = document.getElementById("reportTableBody");
+      const rowsData = centers.map(c => {
+        const list = patientsQueue.filter(p => p.centre === c);
+        return {
+          centre: c,
+          total: list.length,
+          urgent: list.filter(p => p.level === 1).length,
+          prio: list.filter(p => p.level === 2).length,
+          routine: list.filter(p => p.level === 3).length,
+          chronic: list.filter(p => p.chronic).length
+        };
+      });
+
+      if (centerChart) {
+        centerChart.innerHTML = rowsData.map(r => {
+          const pct = total ? Math.round((r.total / total) * 100) : 0;
+          return `
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs font-semibold">
+                <span class="truncate pr-2">${r.centre}</span>
+                <span>${r.total} patient(s)</span>
+              </div>
+              <div class="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full bg-medical-700 rounded-full" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      if (reportTable) {
+        reportTable.innerHTML = rowsData.map(r => `
+          <tr>
+            <td class="px-4 py-2.5 font-medium">${r.centre}</td>
+            <td class="px-4 py-2.5 text-center font-bold">${r.total}</td>
+            <td class="px-4 py-2.5 text-center text-red-600 font-bold">${r.urgent}</td>
+            <td class="px-4 py-2.5 text-center text-amber-600 font-semibold">${r.prio}</td>
+            <td class="px-4 py-2.5 text-center text-emerald-600 font-semibold">${r.routine}</td>
+            <td class="px-4 py-2.5 text-center">${r.chronic}</td>
+          </tr>
+        `).join("");
+      }
+
+      const hourlyChart = document.getElementById("hourlyChartContainer");
+      if (hourlyChart) {
+        const hours = [
+          { h: "08h", v: 45 },
+          { h: "09h", v: 78 },
+          { h: "10h", v: 95 },
+          { h: "11h", v: 88 },
+          { h: "12h", v: 62 },
+          { h: "14h", v: 40 },
+          { h: "16h", v: 55 }
+        ];
+        hourlyChart.innerHTML = hours.map(item => `
+          <div class="flex-1 flex flex-col items-center gap-1.5">
+            <span class="text-[11px] font-bold text-slate-600 dark:text-slate-300">${item.v}%</span>
+            <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-t-lg h-24 flex items-end overflow-hidden">
+              <div class="w-full ${item.v >= 80 ? "bg-amber-500" : "bg-medical-600"} rounded-t-lg" style="height: ${item.v}%"></div>
+            </div>
+            <span class="text-[11px] font-semibold text-slate-500">${item.h}</span>
+          </div>
+        `).join("");
+      }
+
+      const reportDate = document.getElementById("reportDateStamp");
+      if (reportDate) {
+        reportDate.textContent = new Date().toLocaleDateString("fr-FR", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric"
+        });
+      }
+    }
+
+    function exportCsvReport() {
+      const headers = ["ID", "Nom", "Age", "CNI", "Telephone", "Centre", "Niveau_IA", "Statut", "Symptomes", "Heure"];
+      const lines = patientsQueue.map(p => [
+        p.id,
+        `"${p.nom}"`,
+        p.age,
+        `"${p.cni || ""}"`,
+        `"${p.telephone || ""}"`,
+        `"${p.centre}"`,
+        p.label,
+        `"${p.status}"`,
+        `"${(p.symptoms.join("; ") || "Consultation generale")}"`,
+        p.arrivalTime
+      ].join(","));
+      const csv = [headers.join(","), ...lines].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "SanteZig_Rapport_Flux_Ziguinchor.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("Export CSV généré avec succès.", "success");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      changeLanguage("fr");
+      updateUrgentCounter();
+      renderMedicalDashboard();
+      renderStatsAndReport();
+    });
+  </script>
+</body>
+</html>
